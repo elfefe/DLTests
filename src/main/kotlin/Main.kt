@@ -51,6 +51,7 @@ import java.awt.Dimension
 import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
+import java.io.InputStream
 import java.util.*
 
 val timestamp: Long
@@ -107,6 +108,7 @@ fun App(size: Dimension) {
     )
 
     val (train, test) = fashionMnist()
+
     fun defaultModel() = Sequential.of(
         Input(28, 28, 1),
         Flatten(),
@@ -270,16 +272,16 @@ fun App(size: Dimension) {
                             onClick = {
                                 predictButtonClicked = Math.random().toFloat()
 
-                                modelsDir.listFiles()?.first()?.let { selectedModel ->
-                                    TensorFlowInferenceModel.load(selectedModel).use { inference ->
-                                        inference.reshape(28, 28, 1)
-                                        val prediction = inference.predict(test.getX(112))
-                                        val actualLabel = test.getY(112)
-
-                                        println("Predicted label is: $prediction. This corresponds to class ${stringLabels[prediction]}.")
-                                        println("Actual label is: $actualLabel.")
-                                    }
-                                }
+//                                modelsDir.listFiles()?.first()?.let { selectedModel ->
+//                                    TensorFlowInferenceModel.load(selectedModel).use { inference ->
+//                                        inference.reshape(28, 28, 1)
+//                                        val prediction = inference.predict(test.getX(112))
+//                                        val actualLabel = test.getY(112)
+//
+//                                        println("Predicted label is: $prediction. This corresponds to class ${stringLabels[prediction]}.")
+//                                        println("Actual label is: $actualLabel.")
+//                                    }
+//                                }
                             }
                         ) {
                             Text(predictButtonText)
@@ -310,32 +312,76 @@ fun App(size: Dimension) {
                     Row(
                         Modifier.size(0.dp)
                     ) {
-//                        if (predictButtonClicked > 0)
-//                            FileDialog {
-//                                it?.let { fileName ->
-//                                    val predictFile = File(fileName)
-//                                    val predictImage = ImageConverter.toNormalizedFloatArray(predictFile)
-//                                    val predictPreprocessor = preprocess { load {
-//                                        pathToData = predictFile
-//                                        imageShape = ImageShape(28, 28, 1)
-//                                        labelGenerator = EmptyLabels()
-//                                    } }
-//                                    println(predictPreprocessor.finalShape.numberOfElements)
-//                                    val predictDataset = OnHeapDataset.create(predictPreprocessor)
-//                                    modelsDir.listFiles()?.first()?.let { selectedModel ->
-//                                        println("predict: ${selectedModel.name}: \n")
-//                                        TensorFlowInferenceModel.load(selectedModel).use { inference ->
-//                                            println("inference: ${inference.inputDimensions.toList()}")
-//                                            inference.reshape(28, 28, 1)
-//                                            val prediction = inference.predict(predictDataset.getX(0))
-//                                            val actualLabel = predictDataset.getY(0)
-//
-//                                            println("Predicted label is: $prediction. This corresponds to class ${stringLabels[prediction]}.")
-//                                            println("Actual label is: $actualLabel.")
-//                                        }
-//                                    }
-//                                }
-//                            }
+                        if (predictButtonClicked > 0)
+                            FileDialog {
+                                it?.let { fileName ->
+
+                                    val predictFile = File(fileName)
+                                    println("${predictFile.readBytes().mapIndexed { index, byte -> "${index + 1}: ${byte}\n" }.subList(0, 32)}")
+                                    val stream = predictFile.inputStream()
+
+                                    println("------- FILE HEADER ---------")
+                                    println("Sign1 ${stream.read()}")
+                                    println("Sign2 ${stream.read()}")
+                                    println("length1 ${stream.read()}")
+                                    println("length2 ${stream.read()}")
+                                    println("length3 ${stream.read()}")
+                                    println("length4 ${stream.read()}")
+                                    println("reserved1 ${stream.read()}")
+                                    println("reserved2 ${stream.read()}")
+                                    println("reserved3 ${stream.read()}")
+                                    println("reserved4 ${stream.read()}")
+                                    println("offset1 ${stream.read()}")
+                                    println("offset2 ${stream.read()}")
+                                    println("offset3 ${stream.read()}")
+                                    println("offset4 ${stream.read()}")
+
+                                    println("------- IMAGE HEADER ---------")
+                                    println("header1 ${stream.read()}")
+                                    println("header2 ${stream.read()}")
+                                    println("header3 ${stream.read()}")
+                                    println("header4 ${stream.read()}")
+                                    println("width1 ${stream.read()}")
+                                    println("width2 ${stream.read()}")
+                                    println("width3 ${stream.read()}")
+                                    println("width4 ${stream.read()}")
+                                    println("height1 ${stream.read()}")
+                                    println("height2 ${stream.read()}")
+                                    println("height3 ${stream.read()}")
+                                    println("height4 ${stream.read()}")
+                                    println("plans1 ${stream.read()}")
+                                    println("plans2 ${stream.read()}")
+                                    println("color size1 ${stream.read()}")
+                                    println("color size2 ${stream.read()}")
+
+                                    val predictImage = ImageConverter.toNormalizedFloatArray(predictFile)
+
+                                    val predictPreprocessor = preprocess { load {
+                                        pathToData = predictFile
+                                        imageShape = ImageShape(28, 28, 1)
+                                        labelGenerator = EmptyLabels()
+                                    } }
+                                    val imageBuffer = ByteArray(28 * 28)
+                                    val images = Array(1) {
+                                        OnHeapDataset.toNormalizedVector(predictFile.readBytes())
+                                    }
+
+                                    println(predictPreprocessor.finalShape.numberOfElements)
+                                    val predictDataset = OnHeapDataset.create(predictPreprocessor)
+
+                                    modelsDir.listFiles()?.first()?.let { selectedModel ->
+                                        println("predict: ${selectedModel.name}: \n")
+                                        TensorFlowInferenceModel.load(selectedModel).use { inference ->
+                                            inference.reshape(28, 28, 1)
+                                            val prediction = inference.predict(predictDataset.getX(0))
+                                            val actualLabel = predictDataset.getY(0)
+
+                                            println("Predicted label is: $prediction. This corresponds to class ${stringLabels[prediction]}.")
+                                            println("Actual label is: $actualLabel.")
+                                        }
+                                    }
+                                }
+                            }
                     }
                 }
             }
