@@ -2,19 +2,21 @@
 import androidx.compose.desktop.DesktopMaterialTheme
 import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.Button
-import androidx.compose.material.Text
-import androidx.compose.material.TextField
+import androidx.compose.material.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.ExperimentalUnitApi
 import androidx.compose.ui.unit.TextUnit
@@ -36,28 +38,23 @@ import org.jetbrains.kotlinx.dl.api.core.layer.reshaping.Flatten
 import org.jetbrains.kotlinx.dl.api.core.loss.Losses
 import org.jetbrains.kotlinx.dl.api.core.metric.Metrics
 import org.jetbrains.kotlinx.dl.api.core.optimizer.Adam
+import org.jetbrains.kotlinx.dl.api.core.summary.ModelSummary
 import org.jetbrains.kotlinx.dl.api.core.summary.format
 import org.jetbrains.kotlinx.dl.api.inference.TensorFlowInferenceModel
-import org.jetbrains.kotlinx.dl.dataset.OnHeapDataset
 import org.jetbrains.kotlinx.dl.dataset.fashionMnist
-import org.jetbrains.kotlinx.dl.dataset.image.ImageConverter
-import org.jetbrains.kotlinx.dl.dataset.preprocessor.ImageShape
-import org.jetbrains.kotlinx.dl.dataset.preprocessor.generator.EmptyLabels
-import org.jetbrains.kotlinx.dl.dataset.preprocessor.generator.LabelGenerator
-import org.jetbrains.kotlinx.dl.dataset.preprocessor.image.ImagePreprocessor
-import org.jetbrains.kotlinx.dl.dataset.preprocessor.load
-import org.jetbrains.kotlinx.dl.dataset.preprocessor.preprocess
 import java.awt.Dimension
 import java.awt.FileDialog
 import java.awt.Frame
+import java.awt.image.BufferedImage
+import java.awt.image.ColorConvertOp
 import java.io.File
-import java.io.InputStream
 import java.util.*
+import javax.imageio.ImageIO
 
 val timestamp: Long
     get() = Date().time
 
-val modelsDir: File = File("models")
+val modelsDir: File = File("models").apply { createNewFile() }
 
 object TrainStatus {
     const val train = "train"
@@ -85,12 +82,20 @@ fun App(size: Dimension) {
     var trainButtonEnabled by remember { mutableStateOf(true) }
 
     var predictButtonText by remember { mutableStateOf("Predict") }
-    var predictButtonClicked by remember { mutableStateOf(0f) }
+    var predictButtonClicked by remember { mutableStateOf(false) }
 
     var epoch by remember { mutableStateOf(20) }
     val epochHistory = mutableStateListOf<Epoch>()
 
     val epochState = rememberLazyListState(0)
+
+    var modelExpanded by remember { mutableStateOf(false) }
+    var modelItems by remember { mutableStateOf(modelsDir.listFiles()!!.toMutableList()) }
+
+    var selectedModel by remember { mutableStateOf(modelItems.first()) }
+
+    var imageLabel by remember { mutableStateOf("") }
+    var toImage by remember { mutableStateOf(ImageBitmap(28, 28, ImageBitmapConfig.F16)) }
 
     var isTraining = false
 
@@ -110,7 +115,9 @@ fun App(size: Dimension) {
     val (train, test) = fashionMnist()
 
     fun defaultModel() = Sequential.of(
-        Input(28, 28, 1),
+        Input(
+            28, 28, 1
+        ),
         Flatten(),
         Dense(300),
         Dense(100),
@@ -215,7 +222,6 @@ fun App(size: Dimension) {
                                     trainButtonEnabled = false
                                     if (model.stopTraining) {
                                         model.stopTraining = false
-                                        epochHistory.clear()
                                         trainButtonText = TrainStatus.configuring
                                         model = defaultModel()
                                     }
@@ -223,6 +229,7 @@ fun App(size: Dimension) {
                                     scope.launch(Dispatchers.Default) {
                                         model.use {
                                             trainButtonEnabled = true
+                                            epochHistory.clear()
 
                                             it.fit(
                                                 dataset = train,
@@ -250,6 +257,8 @@ fun App(size: Dimension) {
                                                         }".trim()
                                                     )
                                                 it.save(file)
+
+                                                modelItems = modelsDir.listFiles()!!.toMutableList()
                                             }
                                         }
 
@@ -270,18 +279,7 @@ fun App(size: Dimension) {
 
                         Button(
                             onClick = {
-                                predictButtonClicked = Math.random().toFloat()
-
-//                                modelsDir.listFiles()?.first()?.let { selectedModel ->
-//                                    TensorFlowInferenceModel.load(selectedModel).use { inference ->
-//                                        inference.reshape(28, 28, 1)
-//                                        val prediction = inference.predict(test.getX(112))
-//                                        val actualLabel = test.getY(112)
-//
-//                                        println("Predicted label is: $prediction. This corresponds to class ${stringLabels[prediction]}.")
-//                                        println("Actual label is: $actualLabel.")
-//                                    }
-//                                }
+                                predictButtonClicked = true
                             }
                         ) {
                             Text(predictButtonText)
@@ -309,81 +307,118 @@ fun App(size: Dimension) {
                             singleLine = true
                         )
                     }
-                    Row(
-                        Modifier.size(0.dp)
+                    Spacer(Modifier.height(10.dp))
+
+                    Column(
+                        Modifier
+                            .fillMaxSize(),
+                        verticalArrangement = Arrangement.SpaceEvenly,
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        if (predictButtonClicked > 0)
-                            FileDialog {
-                                it?.let { fileName ->
 
-                                    val predictFile = File(fileName)
-                                    println("${predictFile.readBytes().mapIndexed { index, byte -> "${index + 1}: ${byte}\n" }.subList(0, 32)}")
-                                    val stream = predictFile.inputStream()
+                        Column(
+                            Modifier
+                                .fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            var dropdownSize by remember { mutableStateOf(0f) }
 
-                                    println("------- FILE HEADER ---------")
-                                    println("Sign1 ${stream.read()}")
-                                    println("Sign2 ${stream.read()}")
-                                    println("length1 ${stream.read()}")
-                                    println("length2 ${stream.read()}")
-                                    println("length3 ${stream.read()}")
-                                    println("length4 ${stream.read()}")
-                                    println("reserved1 ${stream.read()}")
-                                    println("reserved2 ${stream.read()}")
-                                    println("reserved3 ${stream.read()}")
-                                    println("reserved4 ${stream.read()}")
-                                    println("offset1 ${stream.read()}")
-                                    println("offset2 ${stream.read()}")
-                                    println("offset3 ${stream.read()}")
-                                    println("offset4 ${stream.read()}")
+                            Button(
+                                onClick = {
+                                    modelExpanded = true
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .onSizeChanged { dropdownSize = it.width.toFloat() }
+                            ) {
+                                Text(selectedModel.name, fontSize = TextUnit(10f, TextUnitType.Sp))
+                            }
 
-                                    println("------- IMAGE HEADER ---------")
-                                    println("header1 ${stream.read()}")
-                                    println("header2 ${stream.read()}")
-                                    println("header3 ${stream.read()}")
-                                    println("header4 ${stream.read()}")
-                                    println("width1 ${stream.read()}")
-                                    println("width2 ${stream.read()}")
-                                    println("width3 ${stream.read()}")
-                                    println("width4 ${stream.read()}")
-                                    println("height1 ${stream.read()}")
-                                    println("height2 ${stream.read()}")
-                                    println("height3 ${stream.read()}")
-                                    println("height4 ${stream.read()}")
-                                    println("plans1 ${stream.read()}")
-                                    println("plans2 ${stream.read()}")
-                                    println("color size1 ${stream.read()}")
-                                    println("color size2 ${stream.read()}")
-
-                                    val predictImage = ImageConverter.toNormalizedFloatArray(predictFile)
-
-                                    val predictPreprocessor = preprocess { load {
-                                        pathToData = predictFile
-                                        imageShape = ImageShape(28, 28, 1)
-                                        labelGenerator = EmptyLabels()
-                                    } }
-                                    val imageBuffer = ByteArray(28 * 28)
-                                    val images = Array(1) {
-                                        OnHeapDataset.toNormalizedVector(predictFile.readBytes())
-                                    }
-
-                                    println(predictPreprocessor.finalShape.numberOfElements)
-                                    val predictDataset = OnHeapDataset.create(predictPreprocessor)
-
-                                    modelsDir.listFiles()?.first()?.let { selectedModel ->
-                                        println("predict: ${selectedModel.name}: \n")
-                                        TensorFlowInferenceModel.load(selectedModel).use { inference ->
-                                            inference.reshape(28, 28, 1)
-                                            val prediction = inference.predict(predictDataset.getX(0))
-                                            val actualLabel = predictDataset.getY(0)
-
-                                            println("Predicted label is: $prediction. This corresponds to class ${stringLabels[prediction]}.")
-                                            println("Actual label is: $actualLabel.")
+                            DropdownMenu(
+                                expanded = modelExpanded,
+                                onDismissRequest = { modelExpanded = false },
+                                modifier = Modifier.width(dropdownSize.dp)
+                            ) {
+                                modelItems.forEach {
+                                    DropdownMenuItem(
+                                        onClick = {
+                                            selectedModel = it
+                                            modelExpanded = false
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .wrapContentHeight()
+                                    ) {
+                                        Text(it.name, fontSize = TextUnit(12f, TextUnitType.Sp))
+                                        Spacer(Modifier.width(20.dp))
+                                        IconButton(onClick = {
+                                            modelExpanded = false
+                                            it.deleteRecursively()
+                                            modelItems.remove(it)
+                                            selectedModel = modelItems.last()
+                                        }) {
+                                            Icon(Icons.Default.Delete, "delete", tint = Color.Gray)
                                         }
                                     }
                                 }
                             }
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+
+                        Column(
+                            Modifier
+                                .fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(imageLabel)
+                            Spacer(Modifier.height(10.dp))
+                            Image(toImage, "to", Modifier.size(64.dp))
+                        }
                     }
                 }
+            }
+        }
+
+        if (predictButtonClicked) {
+            FileDialog {
+                it?.let { fileName ->
+
+                    val predictFile = File(fileName)
+                    val fromImageBuffer = ImageIO.read(predictFile)
+                    val toImageBuffer = BufferedImage(
+                        fromImageBuffer.width, fromImageBuffer.height,
+                        BufferedImage.TYPE_BYTE_INDEXED
+                    )
+
+                    ColorConvertOp(
+                        fromImageBuffer.colorModel.colorSpace,
+                        toImageBuffer.colorModel.colorSpace,
+                        null
+                    ).filter(fromImageBuffer, toImageBuffer)
+
+                    toImage = toImageBuffer.toComposeBitmap()
+
+//                    println("from: ${fromImageBuffer.raster.dataBuffer.size}, to: ${toImageBuffer.raster.dataBuffer.size}")
+//                    println("to type: ${toImageBuffer.raster.dataBuffer.dataType}")
+
+                    val predictFloatArray = FloatArray(toImageBuffer.width * toImageBuffer.height)
+                    for (i in predictFloatArray.indices) {
+                        predictFloatArray[i] = fromImageBuffer.raster.dataBuffer.getElemFloat(i) / 255
+                    }
+
+//                    println("predict: ${selectedModel.name}: \n")
+                    TensorFlowInferenceModel.load(selectedModel).use { inference ->
+                        inference.reshape(28, 28, 1)
+                        val prediction = inference.predict(predictFloatArray)
+
+//                        println("Predicted label is: $prediction. This corresponds to class ${stringLabels[prediction]}.")
+//                        println("Actual label is: 8.")
+
+                        imageLabel = "It's a ${stringLabels[prediction]} (͠≖ ͜ʖ͠≖)\uD83D\uDC4C"
+                    }
+                }
+                predictButtonClicked = false
             }
         }
     }
@@ -414,12 +449,17 @@ fun Sequential.configure(
             onCallback(epoch, loss)
         }
     )
+
+    onSummary(summary().text())
+}
+
+fun ModelSummary.text(): String = format().run {
     var text = ""
-    summary().format().forEach {
+    forEach {
         if (!it.contains("="))
-            text += "$it\n"
+        text +="$it\n"
     }
-    onSummary(text)
+    text
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -433,7 +473,9 @@ private fun FileDialog(
             override fun setVisible(value: Boolean) {
                 super.setVisible(value)
                 if (value) {
-                    onCloseRequest(directory + file)
+                    apply {
+                        onCloseRequest(directory + file)
+                    }
                 }
             }
         }
