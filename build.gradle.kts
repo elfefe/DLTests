@@ -17,8 +17,14 @@ repositories {
 }
 
 dependencies {
+    val ktor = "1.6.7"
     implementation(compose.desktop.currentOs)
     implementation ("org.jetbrains.kotlinx:kotlin-deeplearning-api:0.3.0")
+    implementation("io.ktor:ktor-server-core:$ktor")
+    implementation("io.ktor:ktor-server-netty:$ktor")
+    implementation("io.ktor:ktor-client-core:$ktor")
+    implementation("io.ktor:ktor-client-cio:$ktor")
+    implementation("ch.qos.logback:logback-classic:1.2.7")
 }
 
 tasks.withType<KotlinCompile> {
