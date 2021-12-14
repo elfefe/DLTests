@@ -29,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.kotlinx.dl.api.core.Sequential
+import org.jetbrains.kotlinx.dl.api.core.activation.Activations
 import org.jetbrains.kotlinx.dl.api.core.callback.Callback
 import org.jetbrains.kotlinx.dl.api.core.history.EpochTrainingEvent
 import org.jetbrains.kotlinx.dl.api.core.history.TrainingHistory
@@ -119,9 +120,9 @@ fun App(size: Dimension) {
             28, 28, 1
         ),
         Flatten(),
-        Dense(300),
-        Dense(100),
-        Dense(10)
+        Dense(outputSize = 300, activation = Activations.Relu),
+        Dense(100, activation = Activations.Relu),
+        Dense(10, activation = Activations.Sigmoid)
     ).apply {
         var lastTime = timestamp
         configure(
