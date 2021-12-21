@@ -25,9 +25,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.AwtWindow
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import common.configure
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import model.Epoch
 import org.jetbrains.kotlinx.dl.api.core.Sequential
 import org.jetbrains.kotlinx.dl.api.core.activation.Activations
 import org.jetbrains.kotlinx.dl.api.core.callback.Callback
@@ -423,44 +425,6 @@ fun App(size: Dimension) {
             }
         }
     }
-}
-
-data class Epoch(
-    val epoch: Int,
-    val loss: Double,
-    val time: Float
-)
-
-class ModelCallback(val onEpochEnd: (Int, Double) -> Unit) : Callback() {
-    override fun onEpochEnd(epoch: Int, event: EpochTrainingEvent, logs: TrainingHistory) {
-        super.onEpochEnd(epoch, event, logs)
-        onEpochEnd(epoch, event.lossValue)
-    }
-}
-
-fun Sequential.configure(
-    onSummary: (String) -> Unit,
-    onCallback: (Int, Double) -> Unit
-) {
-    compile(
-        optimizer = Adam(),
-        loss = Losses.SOFT_MAX_CROSS_ENTROPY_WITH_LOGITS,
-        metric = Metrics.ACCURACY,
-        callback = ModelCallback { epoch, loss ->
-            onCallback(epoch, loss)
-        }
-    )
-
-    onSummary(summary().text())
-}
-
-fun ModelSummary.text(): String = format().run {
-    var text = ""
-    forEach {
-        if (!it.contains("="))
-        text +="$it\n"
-    }
-    text
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
